@@ -1,0 +1,6 @@
+@HobbyGeneratorAPI_HostAddress = http://localhost:5259
+
+GET {{HobbyGeneratorAPI_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
