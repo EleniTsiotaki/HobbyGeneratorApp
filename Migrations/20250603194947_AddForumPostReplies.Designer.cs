@@ -3,6 +3,7 @@ using System;
 using HobbyGeneratorAPI.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace HobbyGeneratorAPI.Migrations
 {
     [DbContext(typeof(HobbyDbContext))]
-    partial class HobbyDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250603194947_AddForumPostReplies")]
+    partial class AddForumPostReplies
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "9.0.1");
@@ -42,9 +45,6 @@ namespace HobbyGeneratorAPI.Migrations
 
                     b.Property<string>("ConcurrencyStamp")
                         .IsConcurrencyToken()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("DisplayName")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Email")
@@ -325,7 +325,7 @@ namespace HobbyGeneratorAPI.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("HobbyGeneratorAPI.Models.ApplicationUser", "User")
-                        .WithMany("ForumPosts")
+                        .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -386,11 +386,6 @@ namespace HobbyGeneratorAPI.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-                });
-
-            modelBuilder.Entity("HobbyGeneratorAPI.Models.ApplicationUser", b =>
-                {
-                    b.Navigation("ForumPosts");
                 });
 
             modelBuilder.Entity("HobbyGeneratorAPI.Models.ForumPost", b =>

@@ -1,15 +1,47 @@
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.AspNetCore.Identity;
+using HobbyGeneratorAPI.Models;
 
-public class HobbyDbContext : DbContext
+namespace HobbyGeneratorAPI.Data
 {
-    public HobbyDbContext(DbContextOptions<HobbyDbContext> options) : base(options) { }
+    public class HobbyDbContext : IdentityDbContext<ApplicationUser>
+    {
+        public HobbyDbContext(DbContextOptions<HobbyDbContext> options) : base(options)
+        {
+        }
 
-    public DbSet<User> Users { get; set; }
-    public DbSet<Hobby> Hobbies { get; set; }
-}
-public class ApplicationUser : IdentityUser
-{
-    // Add additional properties if needed (e.g., first name, last name, etc.)
-    public string FullName { get; set; }
+        public DbSet<Hobby> Hobbies { get; set; }
+        public DbSet<ForumPost> ForumPosts { get; set; }
+
+        protected override void OnModelCreating(ModelBuilder builder)
+        {
+            base.OnModelCreating(builder);
+
+            // Configure User-Hobby many-to-many relationship
+            builder.Entity<Hobby>()
+                .HasMany(h => h.Users)
+                .WithMany(u => u.Hobbies)
+                .UsingEntity(j => j.ToTable("UserHobbies"));
+
+            // Configure ForumPost-Hobby one-to-many relationship
+            builder.Entity<ForumPost>()
+                .HasOne(fp => fp.Hobby)
+                .WithMany(h => h.ForumPosts)
+                .HasForeignKey(fp => fp.HobbyId);
+
+            // Configure ForumPost-User one-to-many relationship
+            builder.Entity<ForumPost>()
+                .HasOne(fp => fp.User)
+                .WithMany(u => u.ForumPosts)
+                .HasForeignKey(fp => fp.UserId)
+                .OnDelete(DeleteBehavior.Cascade); // Enable cascading delete
+
+            // Configure ForumPost self-referencing relationship for replies
+            builder.Entity<ForumPost>()
+                .HasOne(fp => fp.ParentPost)
+                .WithMany(fp => fp.Replies)
+                .HasForeignKey(fp => fp.ParentPostId)
+                .OnDelete(DeleteBehavior.Restrict); // Prevent cascading deletes for replies
+        }
+    }
 }

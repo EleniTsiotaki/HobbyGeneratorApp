@@ -3,6 +3,7 @@ using System;
 using HobbyGeneratorAPI.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace HobbyGeneratorAPI.Migrations
 {
     [DbContext(typeof(HobbyDbContext))]
-    partial class HobbyDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250515182601_AddedUserIdFieldInHobbyModel")]
+    partial class AddedUserIdFieldInHobbyModel
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "9.0.1");
@@ -29,7 +32,7 @@ namespace HobbyGeneratorAPI.Migrations
 
                     b.HasIndex("UsersId");
 
-                    b.ToTable("UserHobbies", (string)null);
+                    b.ToTable("ApplicationUserHobby");
                 });
 
             modelBuilder.Entity("HobbyGeneratorAPI.Models.ApplicationUser", b =>
@@ -42,9 +45,6 @@ namespace HobbyGeneratorAPI.Migrations
 
                     b.Property<string>("ConcurrencyStamp")
                         .IsConcurrencyToken()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("DisplayName")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Email")
@@ -102,57 +102,18 @@ namespace HobbyGeneratorAPI.Migrations
                     b.ToTable("AspNetUsers", (string)null);
                 });
 
-            modelBuilder.Entity("HobbyGeneratorAPI.Models.ForumPost", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Content")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("HobbyId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int?>("ParentPostId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("HobbyId");
-
-                    b.HasIndex("ParentPostId");
-
-                    b.HasIndex("UserId");
-
-                    b.ToTable("ForumPosts");
-                });
-
             modelBuilder.Entity("HobbyGeneratorAPI.Models.Hobby", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
-
                     b.Property<string>("Description")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("ImageUrl")
-                        .HasColumnType("TEXT");
-
                     b.Property<string>("Link")
+                        .IsRequired()
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Name")
@@ -160,6 +121,10 @@ namespace HobbyGeneratorAPI.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Type")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UserId")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
@@ -311,32 +276,6 @@ namespace HobbyGeneratorAPI.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("HobbyGeneratorAPI.Models.ForumPost", b =>
-                {
-                    b.HasOne("HobbyGeneratorAPI.Models.Hobby", "Hobby")
-                        .WithMany("ForumPosts")
-                        .HasForeignKey("HobbyId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("HobbyGeneratorAPI.Models.ForumPost", "ParentPost")
-                        .WithMany("Replies")
-                        .HasForeignKey("ParentPostId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("HobbyGeneratorAPI.Models.ApplicationUser", "User")
-                        .WithMany("ForumPosts")
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Hobby");
-
-                    b.Navigation("ParentPost");
-
-                    b.Navigation("User");
-                });
-
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
                 {
                     b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole", null)
@@ -386,21 +325,6 @@ namespace HobbyGeneratorAPI.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-                });
-
-            modelBuilder.Entity("HobbyGeneratorAPI.Models.ApplicationUser", b =>
-                {
-                    b.Navigation("ForumPosts");
-                });
-
-            modelBuilder.Entity("HobbyGeneratorAPI.Models.ForumPost", b =>
-                {
-                    b.Navigation("Replies");
-                });
-
-            modelBuilder.Entity("HobbyGeneratorAPI.Models.Hobby", b =>
-                {
-                    b.Navigation("ForumPosts");
                 });
 #pragma warning restore 612, 618
         }
