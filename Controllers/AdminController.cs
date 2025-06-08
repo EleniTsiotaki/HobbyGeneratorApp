@@ -3,10 +3,7 @@ using HobbyGeneratorAPI.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Text;
+using HobbyGeneratorAPI.Models.Dtos;
 
 namespace HobbyGeneratorAPI.Controllers
 {
@@ -23,6 +20,7 @@ namespace HobbyGeneratorAPI.Controllers
         }
 
         // GET: api/admin/hobbies
+        //GET all hobbies with filtering (search, category) and follower counts.
         [HttpGet("hobbies")]
         public async Task<IActionResult> GetAllHobbies([FromQuery] string? search, [FromQuery] string? category)
         {
@@ -56,7 +54,8 @@ namespace HobbyGeneratorAPI.Controllers
             return Ok(hobbies);
         }
 
-        // POST: Create a hobby
+        // POST api/admin/hobbies
+        // Create a hobby
         [HttpPost("hobbies")]
         public async Task<IActionResult> CreateHobby([FromBody] HobbyCreateDto dto)
         {
@@ -73,7 +72,8 @@ namespace HobbyGeneratorAPI.Controllers
             return Ok(hobby);
         }
 
-        // PUT: Update a hobby
+        // PUT api/admin/hobbies/{id}
+        // UPDATE a hobby
         [HttpPut("hobbies/{id}")]
         public async Task<IActionResult> UpdateHobby(int id, [FromBody] HobbyCreateDto dto)
         {
@@ -88,6 +88,7 @@ namespace HobbyGeneratorAPI.Controllers
             return Ok();
         }
 
+        // DELETE api/admin/hobbies/{id}
         // DELETE: Delete a hobby
         [HttpDelete("hobbies/{id}")]
         public async Task<IActionResult> DeleteHobby(int id)
@@ -99,6 +100,7 @@ namespace HobbyGeneratorAPI.Controllers
             return Ok();
         }
 
+        // GET api/admin/users
         // GET: Get all users
         [HttpGet("users")]
         public async Task<IActionResult> GetAllUsers()
@@ -118,7 +120,8 @@ namespace HobbyGeneratorAPI.Controllers
             return Ok(users);
         }
 
-        // DELETE: Delete a user
+        // DELETE api/admin/users/{id}
+        // DELETE: Delete a user and their hobbies / posts
         [HttpDelete("users/{id}")]
         public async Task<IActionResult> DeleteUser(string id)
         {
@@ -152,7 +155,8 @@ namespace HobbyGeneratorAPI.Controllers
             }
         }
 
-        // DELETE: Delete a forum post
+        // DELETE api/admin/hobbies/{hobbyId}/forum/{postId}
+        // DELETE: Delete a forum post + replies
         [HttpDelete("hobbies/{hobbyId}/forum/{postId}")]
         public async Task<IActionResult> DeleteForumPost(int hobbyId, int postId)
         {
@@ -189,7 +193,8 @@ namespace HobbyGeneratorAPI.Controllers
             }
         }
 
-        // GET: Get statistics
+        // GET api/admin/statistics
+        // GET: Get statistics (total hobbies, followers, top hobbies, category distribution)
         [HttpGet("statistics")]
         public async Task<IActionResult> GetStatistics()
         {
@@ -221,21 +226,4 @@ namespace HobbyGeneratorAPI.Controllers
         }
     }
 
-    public class HobbyCreateDto
-    {
-        public string? Name { get; set; }
-        public string? Description { get; set; }
-        public string? Type { get; set; }
-        public string? Link { get; set; }
-        public string? ImageUrl { get; set; }
-    }
-
-    public class ForumPostDto
-    {
-        public int Id { get; set; }
-        public int HobbyId { get; set; }
-        public string UserId { get; set; }
-        public string Content { get; set; }
-        public DateTime CreatedAt { get; set; }
-    }
 }

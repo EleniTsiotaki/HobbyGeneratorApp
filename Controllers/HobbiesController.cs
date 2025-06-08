@@ -1,14 +1,16 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Identity;
-using System.Threading.Tasks;
 using HobbyGeneratorAPI.Data;
 using HobbyGeneratorAPI.Models;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
-using System.ComponentModel.DataAnnotations;
 using HobbyGeneratorAPI.Services;
+using HobbyGeneratorAPI.Models.Dtos;
 using System;
+using System.Linq;
+using System.Threading.Tasks;
+using System.Collections.Generic;
 
 namespace HobbyGeneratorAPI.Controllers
 {
@@ -33,7 +35,231 @@ namespace HobbyGeneratorAPI.Controllers
             _hobbySeeder = hobbySeeder;
         }
 
-        // Admin-only seeding endpoint
+        // GET api/hobbies/random
+        // Returns a single random hobby or a paginated list of random hobbies
+        [HttpGet("random")]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
+        public async Task<IActionResult> GetRandomHobbies(
+            [FromQuery] bool single = false,
+            [FromQuery] string? category = null,
+            [FromQuery] string? search = null,
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 12)
+        {
+            try
+            {
+                var user = await _userManager.GetUserAsync(User);
+                if (user == null)
+                    return Unauthorized();
+
+                var userHobbyIds = await _context.Hobbies
+                    .Where(h => h.Users.Any(u => u.Id == user.Id))
+                    .Select(h => h.Id)
+                    .ToListAsync();
+
+                var query = _context.Hobbies
+                    .Include(h => h.Users)
+                    .Where(h => !userHobbyIds.Contains(h.Id));
+
+                if (!string.IsNullOrWhiteSpace(category) && category.ToLower() != "all")
+                {
+                    query = query.Where(h => h.Type != null && h.Type.ToLower() == category.ToLower());
+                }
+
+                if (!string.IsNullOrWhiteSpace(search))
+                {
+                    var searchLower = search.ToLower();
+                    query = query.Where(h => h.Name.ToLower().Contains(searchLower) ||
+                                            h.Description.ToLower().Contains(searchLower));
+                }
+
+                if (!await query.AnyAsync())
+                {
+                    query = _context.Hobbies.Include(h => h.Users).AsQueryable();
+                }
+
+                if (!await query.AnyAsync())
+                    return NotFound("No hobbies found.");
+
+                if (single)
+                {
+                    var singleHobbies = await query
+                        .Select(h => new
+                        {
+                            h.Id,
+                            h.Name,
+                            h.Description,
+                            h.Link,
+                            h.Type,
+                            h.ImageUrl,
+                            FollowersCount = h.Users.Count,
+                            IsFollowing = h.Users.Any(u => u.Id == user.Id)
+                        })
+                        .ToListAsync();
+
+                    var random = new Random();
+                    var hobby = singleHobbies[random.Next(singleHobbies.Count)];
+
+                    return Ok(hobby);
+                }
+
+                var totalCount = await query.CountAsync();
+                var totalPages = (int)Math.Ceiling((double)totalCount / pageSize);
+
+                var allHobbies = await query
+                    .Select(h => new
+                    {
+                        h.Id,
+                        h.Name,
+                        h.Description,
+                        h.Link,
+                        h.Type,
+                        h.ImageUrl,
+                        FollowersCount = h.Users.Count,
+                        IsFollowing = false
+                    })
+                    .ToListAsync();
+
+                var randomGen = new Random();
+                var hobbies = allHobbies
+                    .OrderBy(x => randomGen.Next())
+                    .Skip((page - 1) * pageSize)
+                    .Take(pageSize)
+                    .ToList();
+
+                return Ok(new
+                {
+                    hobbies,
+                    pagination = new
+                    {
+                        currentPage = page,
+                        totalPages,
+                        totalCount,
+                        pageSize,
+                        hasNextPage = page < totalPages,
+                        hasPreviousPage = page > 1
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in GetRandomHobbies");
+                return StatusCode(500, "An error occurred while fetching random hobbies");
+            }
+        }
+
+        // GET api/hobbies/recommendations
+        // Returns paginated hobbies based on user's favorite categories
+        [HttpGet("recommendations")]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
+        public async Task<IActionResult> GetRecommendedHobbies(
+            [FromQuery] string? category = null,
+            [FromQuery] string? search = null,
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 12)
+        {
+            try
+            {
+                var user = await _userManager.GetUserAsync(User);
+                if (user == null)
+                    return Unauthorized();
+
+                var userHobbyIds = await _context.Hobbies
+                    .Where(h => h.Users.Any(u => u.Id == user.Id))
+                    .Select(h => h.Id)
+                    .ToListAsync();
+
+                // Get all favorite categories with the highest follow count
+                var categoryCounts = await _context.Hobbies
+                    .Where(h => userHobbyIds.Contains(h.Id) && !string.IsNullOrEmpty(h.Type))
+                    .GroupBy(h => h.Type)
+                    .Select(g => new { Type = g.Key, Count = g.Count() })
+                    .ToListAsync();
+
+                var maxCount = categoryCounts.Any() ? categoryCounts.Max(c => c.Count) : 0;
+                var favoriteCategories = categoryCounts
+                    .Where(c => c.Count == maxCount)
+                    .Select(c => c.Type.ToLower())
+                    .ToList();
+
+                var query = _context.Hobbies
+                    .Include(h => h.Users)
+                    .Where(h => !userHobbyIds.Contains(h.Id));
+
+                if (!string.IsNullOrWhiteSpace(category) && category.ToLower() != "all")
+                {
+                    query = query.Where(h => h.Type != null && h.Type.ToLower() == category.ToLower());
+                }
+
+                if (!string.IsNullOrWhiteSpace(search))
+                {
+                    var searchLower = search.ToLower();
+                    query = query.Where(h => h.Name.ToLower().Contains(searchLower) ||
+                                            h.Description.ToLower().Contains(searchLower));
+                }
+
+                var totalCount = await query.CountAsync();
+                var totalPages = totalCount > 0 ? (int)Math.Ceiling((double)totalCount / pageSize) : 1;
+
+                IOrderedQueryable<Hobby> orderedQuery;
+                if (favoriteCategories.Any())
+                {
+                    orderedQuery = query
+                        .OrderByDescending(h => h.Type != null && favoriteCategories.Contains(h.Type.ToLower()))
+                        .ThenByDescending(h => h.Users.Count)
+                        .ThenBy(h => h.Name);
+                }
+                else
+                {
+                    orderedQuery = query
+                        .OrderByDescending(h => h.Users.Count)
+                        .ThenBy(h => h.Name);
+                }
+
+                var recommendations = await orderedQuery
+                    .Skip((page - 1) * pageSize)
+                    .Take(pageSize)
+                    .Select(h => new
+                    {
+                        h.Id,
+                        h.Name,
+                        h.Description,
+                        h.Link,
+                        h.Type,
+                        h.ImageUrl,
+                        FollowersCount = h.Users.Count,
+                        IsFollowing = false,
+                        IsFavoriteCategory = favoriteCategories.Any() && h.Type != null && favoriteCategories.Contains(h.Type.ToLower())
+                    })
+                    .ToListAsync();
+
+                return Ok(new
+                {
+                    hobbies = recommendations,
+                    pagination = new
+                    {
+                        currentPage = page,
+                        totalPages,
+                        totalCount,
+                        pageSize,
+                        hasNextPage = page < totalPages,
+                        hasPreviousPage = page > 1
+                    },
+                    debug = new
+                    {
+                        userFollowsCount = userHobbyIds.Count,
+                        favoriteCategories
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in GetRecommendedHobbies");
+                return StatusCode(500, "An error occurred while fetching recommendations");
+            }
+        }
+
+        // POST api/hobbies/admin/seed
         [HttpPost("admin/seed")]
         [Authorize(Roles = "Admin", AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
         public async Task<IActionResult> SeedDatabase()
@@ -58,78 +284,7 @@ namespace HobbyGeneratorAPI.Controllers
             }
         }
 
-        [HttpPost("try")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        public async Task<IActionResult> TryHobby([FromBody] HobbyDto hobbyDto)
-        {
-            try
-            {
-                if (!ModelState.IsValid)
-                    return BadRequest(ModelState);
-
-                var user = await _userManager.GetUserAsync(User);
-                if (user == null)
-                    return Unauthorized();
-
-                var existingHobby = await _context.Hobbies
-                    .Include(h => h.Users)
-                    .FirstOrDefaultAsync(h => h.Name == hobbyDto.Name);
-
-                if (existingHobby != null)
-                {
-                    var alreadyFollowing = existingHobby.Users?.Any(u => u.Id == user.Id) ?? false;
-                    if (!alreadyFollowing)
-                    {
-                        existingHobby.Users ??= new List<ApplicationUser>();
-                        existingHobby.Users.Add(user);
-                        await _context.SaveChangesAsync();
-                    }
-
-                    return Ok(new
-                    {
-                        existingHobby.Id,
-                        existingHobby.Name,
-                        existingHobby.Description,
-                        existingHobby.Link,
-                        existingHobby.Type,
-                        existingHobby.ImageUrl,
-                        FollowersCount = existingHobby.Users?.Count ?? 0,
-                        IsFollowing = true
-                    });
-                }
-
-                var newHobby = new Hobby
-                {
-                    Name = hobbyDto.Name,
-                    Description = hobbyDto.Description,
-                    Link = hobbyDto.Link,
-                    Type = hobbyDto.Type,
-                    ImageUrl = hobbyDto.ImageUrl,
-                    Users = new List<ApplicationUser> { user }
-                };
-
-                _context.Hobbies.Add(newHobby);
-                await _context.SaveChangesAsync();
-
-                return Ok(new
-                {
-                    newHobby.Id,
-                    newHobby.Name,
-                    newHobby.Description,
-                    newHobby.Link,
-                    newHobby.Type,
-                    newHobby.ImageUrl,
-                    FollowersCount = 1,
-                    IsFollowing = true
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error in TryHobby");
-                return StatusCode(500, "An error occurred while processing your request");
-            }
-        }
-
+        // GET api/hobbies/my
         [HttpGet("my")]
         [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
         public async Task<IActionResult> GetMyHobbies()
@@ -164,6 +319,7 @@ namespace HobbyGeneratorAPI.Controllers
             }
         }
 
+        // GET api/hobbies/{id}
         [HttpGet("{id}")]
         [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
         public async Task<IActionResult> GetHobbyById(int id)
@@ -202,6 +358,7 @@ namespace HobbyGeneratorAPI.Controllers
             }
         }
 
+        // POST api/hobbies/{id}/follow
         [HttpPost("{id}/follow")]
         [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
         public async Task<IActionResult> FollowHobby(int id)
@@ -239,6 +396,7 @@ namespace HobbyGeneratorAPI.Controllers
             }
         }
 
+        // DELETE api/hobbies/{id}/unfollow
         [HttpDelete("{id}/unfollow")]
         [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
         public async Task<IActionResult> UnfollowHobby(int id)
@@ -277,6 +435,7 @@ namespace HobbyGeneratorAPI.Controllers
             }
         }
 
+        // GET api/hobbies/discover
         [HttpGet("discover")]
         public async Task<IActionResult> DiscoverHobbies(
             [FromQuery] string? category = null,
@@ -297,8 +456,9 @@ namespace HobbyGeneratorAPI.Controllers
 
                 if (!string.IsNullOrWhiteSpace(search))
                 {
-                    query = query.Where(h => h.Name.ToLower().Contains(search.ToLower()) ||
-                                           h.Description.ToLower().Contains(search.ToLower()));
+                    var searchLower = search.ToLower();
+                    query = query.Where(h => h.Name.ToLower().Contains(searchLower) ||
+                                            h.Description.ToLower().Contains(searchLower));
                 }
 
                 var totalCount = await query.CountAsync();
@@ -341,280 +501,7 @@ namespace HobbyGeneratorAPI.Controllers
             }
         }
 
-        [HttpGet("random")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        public async Task<IActionResult> GetRandomHobby()
-        {
-            try
-            {
-                var user = await _userManager.GetUserAsync(User);
-                if (user == null)
-                    return Unauthorized();
-
-                var userHobbyIds = await _context.Hobbies
-                    .Where(h => h.Users.Any(u => u.Id == user.Id))
-                    .Select(h => h.Id)
-                    .ToListAsync();
-
-                var availableHobbies = await _context.Hobbies
-                    .Include(h => h.Users)
-                    .Where(h => !userHobbyIds.Contains(h.Id))
-                    .ToListAsync();
-
-                if (!availableHobbies.Any())
-                {
-                    availableHobbies = await _context.Hobbies
-                        .Include(h => h.Users)
-                        .ToListAsync();
-                }
-
-                if (!availableHobbies.Any())
-                    return NotFound("No hobbies found.");
-
-                var random = new Random();
-                var hobby = availableHobbies[random.Next(availableHobbies.Count)];
-                var isFollowing = hobby.Users.Any(u => u.Id == user.Id);
-
-                return Ok(new
-                {
-                    hobby.Id,
-                    hobby.Name,
-                    hobby.Description,
-                    hobby.Link,
-                    hobby.Type,
-                    hobby.ImageUrl,
-                    FollowersCount = hobby.Users.Count,
-                    IsFollowing = isFollowing
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error in GetRandomHobby");
-                return StatusCode(500, "An error occurred while fetching a random hobby");
-            }
-        }
-
-        [HttpGet("personalised")]
-[Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-public async Task<IActionResult> GetPersonalisedHobbies(
-    [FromQuery] string? category = null,
-    [FromQuery] string? search = null,
-    [FromQuery] int page = 1,
-    [FromQuery] int pageSize = 12,
-    [FromQuery] bool randomOrder = false)
-{
-    try
-    {
-        var user = await _userManager.GetUserAsync(User);
-        if (user == null)
-            return Unauthorized();
-
-        // Get user's current hobbies to exclude them
-        var userHobbyIds = await _context.Hobbies
-            .Where(h => h.Users.Any(u => u.Id == user.Id))
-            .Select(h => h.Id)
-            .ToListAsync();
-
-        // Start with hobbies the user doesn't follow
-        var query = _context.Hobbies
-            .Include(h => h.Users)
-            .Where(h => !userHobbyIds.Contains(h.Id));
-
-        // Apply category filter
-        if (!string.IsNullOrWhiteSpace(category) && category.ToLower() != "all")
-        {
-            query = query.Where(h => h.Type != null && h.Type.ToLower() == category.ToLower());
-        }
-
-        // Apply search filter
-        if (!string.IsNullOrWhiteSpace(search))
-        {
-            var searchLower = search.ToLower();
-            query = query.Where(h => h.Name.ToLower().Contains(searchLower) ||
-                                h.Description.ToLower().Contains(searchLower));
-        }
-
-        var totalCount = await query.CountAsync();
-
-        if (totalCount == 0)
-        {
-            return Ok(new
-            {
-                hobbies = new List<object>(),
-                pagination = new
-                {
-                    currentPage = page,
-                    totalPages = 0,
-                    totalCount = 0,
-                    pageSize,
-                    hasNextPage = false,
-                    hasPreviousPage = false
-                }
-            });
-        }
-
-        // Get all matching hobbies for randomization or ordering
-        var allHobbies = await query
-            .Select(h => new
-            {
-                h.Id,
-                h.Name,
-                h.Description,
-                h.Link,
-                h.Type,
-                h.ImageUrl,
-                FollowersCount = h.Users.Count,
-                IsFollowing = false
-            })
-            .ToListAsync();
-
-        // Apply ordering
-        List<object> orderedHobbies;
-        if (randomOrder)
-        {
-            var random = new Random();
-            orderedHobbies = allHobbies
-                .OrderBy(x => random.Next())
-                .Cast<object>()
-                .ToList();
-        }
-        else
-        {
-            // Default: order by popularity (followers count) then by name
-            orderedHobbies = allHobbies
-                .OrderByDescending(h => h.FollowersCount)
-                .ThenBy(h => h.Name)
-                .Cast<object>()
-                .ToList();
-        }
-
-        // Apply pagination
-        var pagedHobbies = orderedHobbies
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToList();
-
-        var totalPages = (int)Math.Ceiling((double)totalCount / pageSize);
-
-        return Ok(new
-        {
-            hobbies = pagedHobbies,
-            pagination = new
-            {
-                currentPage = page,
-                totalPages,
-                totalCount,
-                pageSize,
-                hasNextPage = page < totalPages,
-                hasPreviousPage = page > 1
-            }
-        });
-    }
-    catch (Exception ex)
-    {
-        _logger.LogError(ex, "Error in GetPersonalisedHobbies");
-        return StatusCode(500, "An error occurred while fetching personalised hobbies");
-    }
-}
-
-        [HttpGet("random-mix")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        public async Task<IActionResult> GetRandomMixHobbies(
-            [FromQuery] string? category = null,
-            [FromQuery] string? search = null,
-            [FromQuery] int page = 1,
-            [FromQuery] int pageSize = 12)
-        {
-            try
-            {
-                var user = await _userManager.GetUserAsync(User);
-                if (user == null)
-                    return Unauthorized();
-
-                var query = _context.Hobbies.Include(h => h.Users).AsQueryable();
-
-                var userHobbyIds = await _context.Hobbies
-                    .Where(h => h.Users.Any(u => u.Id == user.Id))
-                    .Select(h => h.Id)
-                    .ToListAsync();
-
-                query = query.Where(h => !userHobbyIds.Contains(h.Id));
-
-                if (!string.IsNullOrWhiteSpace(category) && category.ToLower() != "all")
-                {
-                    query = query.Where(h => h.Type != null && h.Type.ToLower() == category.ToLower());
-                }
-
-                if (!string.IsNullOrWhiteSpace(search))
-                {
-                    query = query.Where(h => h.Name.ToLower().Contains(search.ToLower()) ||
-                                        h.Description.ToLower().Contains(search.ToLower()));
-                }
-
-                var totalCount = await query.CountAsync();
-
-                if (totalCount == 0)
-                {
-                    return Ok(new
-                    {
-                        hobbies = new List<object>(),
-                        pagination = new
-                        {
-                            currentPage = page,
-                            totalPages = 0,
-                            totalCount = 0,
-                            pageSize,
-                            hasNextPage = false,
-                            hasPreviousPage = false
-                        }
-                    });
-                }
-
-                var allHobbies = await query
-                    .Select(h => new
-                    {
-                        h.Id,
-                        h.Name,
-                        h.Description,
-                        h.Link,
-                        h.Type,
-                        h.ImageUrl,
-                        FollowersCount = h.Users.Count,
-                        IsFollowing = false
-                    })
-                    .ToListAsync();
-
-                var randomGen = new Random();
-                var shuffledHobbies = allHobbies.OrderBy(x => randomGen.Next()).ToList();
-
-                var hobbies = shuffledHobbies
-                    .Skip((page - 1) * pageSize)
-                    .Take(pageSize)
-                    .ToList();
-
-                var totalPages = (int)Math.Ceiling((double)totalCount / pageSize);
-
-                return Ok(new
-                {
-                    hobbies,
-                    pagination = new
-                    {
-                        currentPage = page,
-                        totalPages,
-                        totalCount,
-                        pageSize,
-                        hasNextPage = page < totalPages,
-                        hasPreviousPage = page > 1
-                    }
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error in GetRandomMixHobbies");
-                return StatusCode(500, "An error occurred while fetching random hobbies");
-            }
-        }
-
+        // GET api/hobbies/activity
         [HttpGet("activity")]
         [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
         public async Task<IActionResult> GetRecentActivity([FromQuery] int limit = 5)
@@ -670,110 +557,7 @@ public async Task<IActionResult> GetPersonalisedHobbies(
             }
         }
 
-        [HttpGet("recommendations")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        public async Task<IActionResult> GetRecommendedHobbies(
-            [FromQuery] string? category = null,
-            [FromQuery] string? search = null,
-            [FromQuery] int page = 1,
-            [FromQuery] int pageSize = 12)
-        {
-            try
-            {
-                var user = await _userManager.GetUserAsync(User);
-                if (user == null)
-                    return Unauthorized();
-
-                var userHobbyIds = await _context.Hobbies
-                    .Where(h => h.Users.Any(u => u.Id == user.Id))
-                    .Select(h => h.Id)
-                    .ToListAsync();
-
-                var userPreferredTypes = await _context.Hobbies
-                    .Where(h => userHobbyIds.Contains(h.Id) && !string.IsNullOrEmpty(h.Type))
-                    .GroupBy(h => h.Type)
-                    .OrderByDescending(g => g.Count())
-                    .Select(g => g.Key)
-                    .ToListAsync();
-
-                var query = _context.Hobbies
-                    .Include(h => h.Users)
-                    .Where(h => !userHobbyIds.Contains(h.Id))
-                    .AsQueryable();
-
-                if (!string.IsNullOrWhiteSpace(category) && category.ToLower() != "all")
-                {
-                    query = query.Where(h => h.Type != null && h.Type.ToLower() == category.ToLower());
-                }
-
-                if (!string.IsNullOrWhiteSpace(search))
-                {
-                    query = query.Where(h => h.Name.ToLower().Contains(search.ToLower()) ||
-                                        h.Description.ToLower().Contains(search.ToLower()));
-                }
-
-                IOrderedQueryable<Hobby> orderedQuery;
-
-                if (userPreferredTypes.Any())
-                {
-                    orderedQuery = query
-                        .OrderByDescending(h => userPreferredTypes.Contains(h.Type ?? ""))
-                        .ThenByDescending(h => h.Users.Count)
-                        .ThenBy(h => h.Name);
-                }
-                else
-                {
-                    orderedQuery = query
-                        .OrderByDescending(h => h.Users.Count)
-                        .ThenBy(h => h.Name);
-                }
-
-                var totalCount = await query.CountAsync();
-                var totalPages = (int)Math.Ceiling((double)totalCount / pageSize);
-
-                var recommendations = await orderedQuery
-                    .Skip((page - 1) * pageSize)
-                    .Take(pageSize)
-                    .Select(h => new
-                    {
-                        h.Id,
-                        h.Name,
-                        h.Description,
-                        h.Link,
-                        h.Type,
-                        h.ImageUrl,
-                        FollowersCount = h.Users.Count,
-                        IsFollowing = false,
-                        IsPreferredCategory = userPreferredTypes.Contains(h.Type ?? "")
-                    })
-                    .ToListAsync();
-
-                return Ok(new
-                {
-                    hobbies = recommendations,
-                    pagination = new
-                    {
-                        currentPage = page,
-                        totalPages,
-                        totalCount,
-                        pageSize,
-                        hasNextPage = page < totalPages,
-                        hasPreviousPage = page > 1
-                    },
-                    debug = new
-                    {
-                        userFollowsCount = userHobbyIds.Count,
-                        userPreferredTypes = userPreferredTypes
-                    }
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error in GetRecommendedHobbies");
-                return StatusCode(500, "An error occurred while fetching recommendations");
-            }
-        }
-
+        // GET api/hobbies/categories
         [HttpGet("categories")]
         public async Task<IActionResult> GetCategories()
         {
@@ -799,6 +583,7 @@ public async Task<IActionResult> GetPersonalisedHobbies(
             }
         }
 
+        // GET api/hobbies/{id}/forum
         [HttpGet("{id}/forum")]
         [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
         public async Task<IActionResult> GetForumPosts(int id)
@@ -849,6 +634,7 @@ public async Task<IActionResult> GetPersonalisedHobbies(
             }
         }
 
+        // POST api/hobbies/{id}/forum
         [HttpPost("{id}/forum")]
         [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
         public async Task<IActionResult> CreateForumPost(int id, [FromBody] ForumPostDto postDto)
@@ -897,6 +683,7 @@ public async Task<IActionResult> GetPersonalisedHobbies(
             }
         }
 
+        // POST api/hobbies/{hobbyId}/forum/{postId}/reply
         [HttpPost("{hobbyId}/forum/{postId}/reply")]
         [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
         public async Task<IActionResult> CreateReply(int hobbyId, int postId, [FromBody] ForumPostDto postDto)
@@ -948,35 +735,6 @@ public async Task<IActionResult> GetPersonalisedHobbies(
                 _logger.LogError(ex, "Error in CreateReply for hobby id {HobbyId}, post id {PostId}", hobbyId, postId);
                 return StatusCode(500, "An error occurred while creating the reply");
             }
-        }
-
-        public class HobbyDto
-        {
-            [Required(ErrorMessage = "Hobby name is required")]
-            [StringLength(100, MinimumLength = 2, ErrorMessage = "Hobby name must be between 2 and 100 characters")]
-            public string Name { get; set; } = string.Empty;
-
-            [StringLength(500, ErrorMessage = "Description cannot exceed 500 characters")]
-            public string Description { get; set; } = string.Empty;
-
-            [StringLength(50, ErrorMessage = "Type cannot exceed 50 characters")]
-            public string Type { get; set; } = string.Empty;
-
-            [Url(ErrorMessage = "Please provide a valid URL")]
-            public string Link { get; set; } = string.Empty;
-
-            public string ImageUrl { get; set; } = string.Empty;
-        }
-
-        public class ForumPostDto
-        {
-            public int? Id { get; set; }
-            public int? HobbyId { get; set; }
-            public string? UserId { get; set; }
-            [Required(ErrorMessage = "Content is required")]
-            [StringLength(1000, MinimumLength = 1, ErrorMessage = "Content must be between 1 and 1000 characters")]
-            public string Content { get; set; } = string.Empty;
-            public DateTime? CreatedAt { get; set; }
         }
     }
 }

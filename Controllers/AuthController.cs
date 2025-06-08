@@ -1,14 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
-using System.Threading.Tasks;
-using System;
 using HobbyGeneratorAPI.Models;
-using System.Linq;
 
 namespace HobbyGeneratorAPI.Controllers
 {
@@ -30,6 +26,7 @@ namespace HobbyGeneratorAPI.Controllers
             _configuration = configuration;
         }
 
+        //register
         [HttpPost("register")]
         public async Task<IActionResult> Register([FromBody] RegisterModel model)
         {
@@ -41,7 +38,7 @@ namespace HobbyGeneratorAPI.Controllers
             
             if (result.Succeeded)
             {
-                // Generate JWT token for the newly registered user
+                // Generate JWT token for the new user
                 var token = await GenerateJwtToken(user);
                 return Ok(new { 
                     message = "Registration successful",
@@ -52,6 +49,7 @@ namespace HobbyGeneratorAPI.Controllers
             return BadRequest(result.Errors);
         }
 
+        //login
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginModel model)
         {

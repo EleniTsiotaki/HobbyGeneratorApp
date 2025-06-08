@@ -1,12 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Identity;
-using System.Threading.Tasks;
 using HobbyGeneratorAPI.Models;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using System;
 using Microsoft.EntityFrameworkCore;
-using System.Linq;
 
 namespace HobbyGeneratorAPI.Controllers
 {
@@ -25,7 +22,8 @@ namespace HobbyGeneratorAPI.Controllers
             _logger = logger;
         }
 
-        // Get current user (for role check)
+        //GET api/users/current
+        //GET current user (for role check)
         [HttpGet("current")]
         [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
         public async Task<IActionResult> GetCurrentUser()
@@ -57,7 +55,8 @@ namespace HobbyGeneratorAPI.Controllers
             }
         }
 
-        // Admin: Get all users
+        //GET api/users/admin/users
+        //Admin-Only: GET all users
         [HttpGet("admin/users")]
         [Authorize(Roles = "Admin", AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
         public async Task<IActionResult> GetAllUsers()
@@ -83,7 +82,8 @@ namespace HobbyGeneratorAPI.Controllers
             }
         }
 
-        // Admin: Delete a user
+        //DELETE api/users/admin/users/{id}
+        //Admin-Only: DELETE a user
         [HttpDelete("admin/users/{id}")]
         [Authorize(Roles = "Admin", AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
         public async Task<IActionResult> DeleteUser(string id)
